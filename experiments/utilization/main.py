@@ -1,7 +1,7 @@
 import argparse
 import os
-from cost_model.ios_cost_model import IOSCostModel
-from models.common import *
+from ios.cost_model import IOSCostModel
+from ios.models.common import *
 
 
 def model_a(ch, r) -> Graph:

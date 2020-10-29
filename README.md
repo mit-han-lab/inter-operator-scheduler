@@ -1,150 +1,127 @@
 # IOS: An Inter-Operator Scheduler for CNN Acceleration
 
 With the increasing computational capacity, the sequential execution of CNNs no longer 
-provides sufﬁcient parallelization opportunities to fully utilize all the computation resources. 
-We propose IOS that combines intra- and interoperator parallelism and adapt dynamic programming to 
-ﬁnd an efﬁcient schedule that better utilizes the hardware. Experiments show that IOS can improve the 
+provides sufficient parallelization opportunities to fully utilize all the computation resources. 
+We propose IOS that combines intra- and inter-operator parallelism and adapt dynamic programming to 
+ﬁnd an efficient schedule that better utilizes the hardware. Experiments show that IOS can improve the 
 GPU utilization and speedup modern CNN inference from 1.1 to 1.5x compared to the state-of-the-art 
 libraries (e.g., TensorRT).
 
-## 1 Prerequisites
+<div align="center">
+  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/frameworks_comparison.png" width=600>
+  
+  End-to-end inference performance comparison on a NVIDIA V100 GPU.
+</div>
 
-Current implementation of IOS is based on cuda platform and cuDNN.
+## 1 Installation 
 
-- [CUDA Toolkit]()
-- [cuDNN](https://developer.nvidia.com/cudnn)
+Please follow this section to build IOS from source code.
 
-The following frameworks/libraries are used as baseline:
+### Prerequisites
 
-- [TensorRT](https://developer.nvidia.com/tensorrt)
-- [TVM](https://docs.tvm.ai/install/from_source.html)
-- [TASO](https://github.com/jiazhihao/TASO)
-- [Tensorflow](https://www.tensorflow.org/)
-- [PyTorch](https://pytorch.org/)
+- Cmake 3.10 or higher 
+- [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) 10.0 or higher
+- [cuDNN](https://developer.nvidia.com/cudnn) 7.6.5 or higher
 
-When installing TVM, please turn on the support for cuDNN and LLVM.
-
-All experiments all conducted under following environment.
-- Python 3.7
-- NVIDIA Driver 450.51.05
-- CUDA Toolkit 10.2
-- CUDNN 7.6.5
-- TensorRT 7.0.0.11
-- TVM v0.6
-- TASO v1.0
-- Tensorflow 2.3
-- PyTorch 1.6.0
-
-Please use the following command to install dependent python packages:
-
-``
-conda install pydot tqdm matplotlib
-``
-
-## 2 Build IOS
-
-Please configure `CMakeLists.txt` by setting the following parameters
-- Set the `CUDAPATH` to the CUDA toolkit root directory
-- Set the `TRTPATH` to the TensorRT root directory (download and extract archive to somewhere and point TRTPATH to it)
-
-Then execute the following commands to build IOS 
-```bash
+### Build IOS runtime
+To get started, clone the IOS source code from Github.
+```shell script
+git clone https://github.com/mit-han-lab/inter-operator-scheduler.git ios
+cd ios
+```
+Then build the IOS runtime:
+```shell script
 mkdir build
-cd build
-cmake ..
-make -j8
+cd build; 
+cmake ..; make -j4
+cd ..
 ```
 
-Finally, add the path of `inter-operator-scheduler/python` to environment variable `PYTHONPATH` (You may want to config it in .bashrc file)
-
-## 3 Experiments
-The following parts shows the commands to reproduce all experiments and ablation study. Please run the shell commands in the root directory of inter-operator-scheduler.
-
-### Lock GPU Clock Rate
-Because modern GPU can adjust the execution clock rate dynamically to reduce energy consumption when the device is not busy. 
-We can lock the clock rate to make the experiment results more accurate and consistent.
-Before conducting the experiments, running the following command (need sudo-privilege).
+### Install IOS python package
+Once the IOS runtime has been built, run following commands to install the IOS python package.
 ```shell script
-sudo nvidia-smi --lock-gpu-clocks MIN_CLOCK,MAX_CLOCK
-```
-This command lock the gpu clocks in the specified range `[MIN_CLOCK, MAX_CLOCK]`. 
-In our experiments, we set both `MIN_CLOCK` and `MAX_CLOCK` to 1530, 
-which is the maximum clock rate NVIDIA Tesla V100 SXM2 supports. 
-You can use the following command to query the clock rates supported by your NVIDIA GPU.
-```shell script
-nvidia-smi --query --display SUPPORTED_CLOCKS
-```
-After the experiments, you can run the following command to reset your GPU clock
-```shell script
-sudo nvidia-smi --reset-gpu-clocks
+cd python; 
+python setup.py install --user
 ```
 
-### Comparison of Different Schedules
-Command:
-```shell script
-cd experiments/latency; sh run_expr_schedules.sh; cd ../..
+
+## 3 Usage 
+IOS optimizes user-defined computation graph and does inference on IOS backend. The following code snip is a sample, in which user 
+1. defines the computation graph first,
+2. then optimizes the execution schedule,
+3. and does inference on IOS runtime at last.
+
+<div align="center">
+  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/demo.png">
+  Timeline of the sample network under Sequential, Greedy, and IOS optimized schedule.
+</div>
+
+The following code snip demonstrates the usage of IOS. It first define the computation graph of the network, then optimizes it with IOS, and finally does the inference. The network defined in the code is the sample network shown above.
+
+```python
+import numpy as np
+import ios
+
+def sample_network():
+    v = ios.placeholder(output_shape=(375, 15, 15))
+    block = ios.Block(enter_node=v.node)
+    v1 = ios.conv2d(block, inputs=[[v]], out_channels=375, kernel=(3, 3), stride=(1, 1), padding=(1, 1), act='relu')
+    v2 = ios.conv2d(block, inputs=[[v]], out_channels=750, kernel=(3, 3), stride=(1, 1), padding=(1, 1), act='relu')
+    v3 = ios.conv2d(block, inputs=[[v]], out_channels=375, kernel=(3, 3), stride=(1, 1), padding=(1, 1), act='relu')
+    v1 = ios.conv2d(block, inputs=[[v1]], out_channels=750, kernel=(3, 3), stride=(1, 1), padding=(1, 1), act='relu')
+    out = ios.identity(block, inputs=[[v1], [v2], [v3]], is_exit=True)  # concat v1, v2, and v3
+    graph = ios.Graph(name="demo", input=v.node, blocks=[block])
+    graph.init_weights()
+    return graph
+
+# define computation graph
+graph = sample_network()
+
+# optimize execution schedule
+optimized_graph = ios.optimize(graph, batch_size=1, opt_type='dp_parallel', compute_weight=True)
+
+# measure latency
+graph.sequential_schedule()
+seq_latency, stage_latency = ios.ios_runtime.graph_latency(graph, batch_size=1, repeat=6, profile_stage=True)
+print(graph)
+print(f'Sequential schedule: {np.mean(seq_latency):.3f} ms')
+print(f'      Stage latency: {np.mean(np.array(stage_latency).reshape(6, -1), axis=0)}\n')
+
+opt_latency, stage_latency = ios.ios_runtime.graph_latency(optimized_graph, batch_size=1, repeat=6, profile_stage=True)
+print(optimized_graph)
+print(f'Optimized schedule: {np.mean(opt_latency):.3f} ms')
+print(f'     Stage latency: {np.mean(np.array(stage_latency).reshape(6, -1), axis=0)}')
+
+# inference on ios runtime
+dummy_inputs = np.random.randn(1, 375, 15, 15)
+output = ios.ios_runtime.graph_inference(optimized_graph, batch_size=1, input=dummy_inputs)
 ```
-This experiment compare the following schedules: Sequential, Greedy, IOS-Merge, IOS-Parallel, and IOS-Both. 
-For fair comparison, all schedules are executed in the same execution engine (IOS runtime).
+An output of this program:
+```text
+Sequential(
+  [1]Conv2d(0)
+  [2]Conv2d(0)
+  [3]Conv2d(0)
+  [4]Conv2d(1)
+  [5]Concat(4,2,3)
+)
+Sequential schedule: 0.486 ms
+      Stage latency: [0.11070578 0.12603733 0.10604089 0.12549689 0.01794844]
 
-### Comparison of cuDNN-based Frameworks
-Command:
-```shell script
-cd experiments/latency; sh run_expr_frameworks.sh; cd ../..
+Sequential(
+  Parallel(
+    [1]Conv2d(0)
+    [2]Conv2d(0)
+  )
+  Parallel(
+    [4]Conv2d(1)
+    [3]Conv2d(0)
+  )
+  [5]Concat(4,2,3)
+)
+Optimized schedule: 0.333 ms
+     Stage latency: [0.16145067 0.15448178 0.01732267]
 ```
-This experiment compare IOS with other cuDNN-based frameworks/libraries: Tensorflow, TVM-cuDNN, TASO, and TensorRT. 
-TVM-cuDNN is the TVM framework, but convolution uses the cuDNN kernel (`target = 'cuda -libs=cudnn'`). 
 
-### Utilization Profiling
-Command:
-```shell script
-cd experiments/utilization; sh run_expr_utilization.sh; cd ../..
-```
-Above command would generate a plot image named `active_warps.png`, which can reflect the real device utilization.
-
-### Specialized Scheduling is Beneficial
-IOS support specialized scheduling for different devices and different batch sizes. 
-
-To explore the specialization for different batch sizes, run the following command:
-```shell script
-cd experiments/specialization; sh run_expr_spec_batchsize.sh; cd ../..
-```
-We first optimize for different batch sizes (1, 16, 32, 64, and 128) to get the schedule specialized for different batch sizes (for your simplicity, we have put the schedules we got in the `schedules` directory). 
-Then we execute the network Inception V3 with different batch sizes and specialized schedules (there are 25 combinations, 5 by 5). 
-
-To explore the specialization for different devices, we need a different GPU device. In our experiment, we take NVIDIA Tesla K80 as the second device.
-We first optimize the network on different devices to get the specialized schedules (we also put them in `schedules` directory). 
-Then we execute the network with different specialized schedules on the two devices (there are 4 combinations, 2 by 2).
-```shell script
-cd experiments/specialization; sh run_expr_spec_device.sh; cd ../..
-```
-Experiments show that specialized scheduling is beneficial.
-
-### Schedule Pruning Reduce Search Time
-Command:
-```shell script
-cd experiments/prune; sh run_expr_prune.sh; cd ../..
-```
-To allow users to trade off the search time and optimized schedule latency, we introduce the schedule pruning strategy to reduce the search time. 
-This experiment shows the trade-off between the search time and schedule latency.
-
-### Consistent Improvement for Different Batch Sizes
-Command:
-```shell script
-cd experiments/latency; sh run_expr_batchsize.sh; cd ../..
-```
-IOS can achieve consistent improvement for different batch sizes. In this experiment, we measure the latency of Inception V3 on batch size 1, 16, 32, 64, 128. 
-Experiment result show that IOS consistently outperforms TensorRT in terms of throughput.
-
-### Intra- and Inter-Operator Parallelism
-Command:
-```shell script
-cd experiments/latency; sh run_expr_autotvm.sh; cd ../..
-```
-AutoTVM is specialized for improvement the efficiency of the kernel by searching a highly optimized schedule for the kernel itself. 
-Current IOS is implemented based on vendor-provided library cuDNN. 
-We compare both of them to give us more insight about the intra- and inter-operator parallelism.
-Because AutoTVM is time consuming (it takes us 26 hours on a 8-V100 server to optimize the four benchmark networks), we provide the schedule configs in `tvm_schedule_configs` directory. 
-Please note that these schedule configs are optimized for NVIDIA Tesla V100 SXM2 with driver 450.51.05 and cuda toolkit 10.2. 
-
-
+## 4 Experiments
+See [instructions](experiments/README.md) to reproduce all the experiments.

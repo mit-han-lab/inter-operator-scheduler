@@ -1,36 +1,42 @@
 cmake_minimum_required(VERSION 3.10)
-
-# please configure the following paths
-set(CUDAPATH /usr/local/cuda-10.2)
-set(CUDNNPATH /usr/local/cuda-10.2)
-set(TRTPATH /home/ubuntu/libs/TensorRT-7.0.0.11)
-
 project(ios LANGUAGES C CXX CUDA)
 
-set(CMAKE_CUDA_COMPILER ${CUDAPATH}/bin/nvcc)
-set(CUPTIPATH ${CUDAPATH}/extras/CUPTI)
+include(config.cmake)
+file(GLOB_RECURSE IOS_SRCS src/ios/* src/utils/*)
+file(GLOB_RECURSE TRT_SRCS src/trt/* src/utils/*)
 
-find_library(TRT_LIBRARY NAMES nvinfer PATHS ${TRTPATH}/lib NO_DEFAULT_PATH)
-find_library(CUDNN_LIBRARY NAMES cudnn PATHS ${CUDNNPATH}/lib64 NO_DEFAULT_PATH)
-find_library(CUDART_LIBRARY NAMES cudart PATHS ${CUDAPATH}/lib64 NO_DEFAULT_PATH)
-find_library(CUPTI_LIBRARY NAMES cupti PATHS ${CUPTIPATH}/lib64 NO_DEFAULT_PATH)
-
-
-include_directories(${CUDAPATH}/include ${CUPTIPATH}/include ${MKLPATH}/include ${TRTPATH}/include)
-link_directories(${CUDAPATH}/lib64 ${MKLPATH}/lib ${CUPTIPATH}/lib64)
+if (NOT "${USE_CUDA}" STREQUAL "OFF")
+    include(cmake/FindCUDA.cmake)
+    find_cuda(${USE_CUDA})
+    if (CUDA_FOUND)
+        include_directories(${CUDA_INCLUDE_DIRS})
+        message(STATUS "CUDA_INCLUDE_DIR=" ${CUDA_INCLUDE_DIRS})
+    else()
+        message(FATAL_ERROR "Cannot find CUDA, USE_CUDA=" ${USE_CUDA})
+    endif(CUDA_FOUND)
+endif()
 
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-std=c++11" SUPPORT_CXX11)
-
 set(CMAKE_CUDA_FLAGS "-O2 -arch compute_70 -Xcompiler=-fPIC ${CMAKE_CUDA_FLAGS}")
 set(CMAKE_CXX_FLAGS "-O2 -Wall -fPIC -Wno-deprecated-declarations ${CMAKE_CXX_FLAGS}")
-set(COMMON_SRCS src/dist/jsoncpp.cpp src/utils.cc )
 add_definitions(-DBUILD_SHARED_LIBS=ON)
 
-add_library(trt_backend SHARED src/trt_backend.cc ${COMMON_SRCS})
-target_link_libraries(trt_backend ${TRT_LIBRARY} ${CUDNN_LIBRARY} ${CUDART_LIBRARY})
+include_directories(include)
 
-add_library(ios_backend SHARED src/ios_backend.cu src/ops.cu ${COMMON_SRCS} src/profile.cu src/profile.h)
-set_target_properties(ios_backend PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-target_link_libraries(ios_backend cuda pthread ${CUDNN_LIBRARY} ${CUDART_LIBRARY} ${CUPTI_LIBRARY})
+add_library(ios_runtime SHARED ${IOS_SRCS})
+target_link_libraries(ios_runtime ${CUDA_CUDA_LIBRARY} ${CUDA_CUDNN_LIBRARY}
+        ${CUDA_CUDART_LIBRARY}
+        ${CUDA_CUPTI_LIBRARY}
+#        ${CUDA_TOOLKIT_ROOT_DIR}/extras/CUPTI/lib64/libcupti.so
+        ) #pthread
+set_target_properties(ios_runtime PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+if(NOT "${USE_TRT}" STREQUAL "OFF")
+    find_library(TRT_LIBRARY NAMES nvinfer PATHS ${USE_TRT}/lib NO_DEFAULT_PATH)
+    add_library(trt_runtime SHARED ${TRT_SRCS})
+    target_include_directories(trt_runtime PUBLIC ${USE_TRT}/include)
+    target_link_libraries(trt_runtime ${TRT_LIBRARY} ${CUDA_CUDNN_LIBRARY} ${CUDA_CUDART_LIBRARY})
+endif()
+
 

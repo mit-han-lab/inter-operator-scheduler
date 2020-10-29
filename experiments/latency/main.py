@@ -4,9 +4,9 @@ import argparse
 import numpy as np
 import os
 import logging
-from optimizer import optimize
-from models import inception_v3, randwire_large, nasnet_large, squeezenet
-from visualizer import draw, draw_block
+from ios.optimizer import optimize
+from ios.models import inception_v3, randwire_large, nasnet_large, squeezenet
+from ios.visualizer import draw, draw_block
 
 logging.disable(logging.WARNING)
 

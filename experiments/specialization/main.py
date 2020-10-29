@@ -1,13 +1,10 @@
 import json
-import time
 import argparse
 import numpy as np
 import os
-from ir import Graph
-from optimizer import optimize
-from models import inception_v3, randwire_large, nasnet_large, squeezenet
-from visualizer import draw, draw_block
-from cost_model.ios_cost_model import IOSCostModel
+from ios.ir import Graph
+from ios.visualizer import draw, draw_block
+from ios.cost_model import IOSCostModel
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--edir', type=str, required=True)
