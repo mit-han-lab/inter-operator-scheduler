@@ -7,7 +7,7 @@
 #include <cuda_runtime_api.h>
 #include <cassert>
 #include "NvInfer.h"
-#include "ios/utils.h"
+#include "utils/utils.h"
 
 
 #define MAX_NUM_NODES 500

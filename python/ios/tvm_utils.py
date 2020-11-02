@@ -130,9 +130,9 @@ def graph2relay(graph: Graph, batch_size):
     fn = relay.Function(relay.analysis.free_vars(x), x)
 
     if tvm_minor_version() <= 6:
-        return tvm.ir.IRModule.from_expr(fn), params
-    else:
         return relay.Module.from_expr(fn), params
+    else:
+        return tvm.ir.IRModule.from_expr(fn), params
 
 
 
@@ -172,9 +172,9 @@ def block2relay(block: Block, batch_size):
             raise NotImplemented
     fn = relay.Function(relay.analysis.free_vars(x), x)
     if tvm_minor_version() <= 6:
-        return tvm.ir.IRModule.from_expr(fn), params
-    else:
         return relay.Module.from_expr(fn), params
+    else:
+        return tvm.ir.IRModule.from_expr(fn), params
 
 
 def conv2relay(node: Conv, batch_size):
@@ -207,9 +207,9 @@ def conv2relay(node: Conv, batch_size):
     node2var[node] = x
     fn = relay.Function(relay.analysis.free_vars(x), x)
     if tvm_minor_version() <= 6:
-        return tvm.ir.IRModule.from_expr(fn), params
-    else:
         return relay.Module.from_expr(fn), params
+    else:
+        return tvm.ir.IRModule.from_expr(fn), params
 
 
 def relay_latency(relay_module, params, target, number, repeat, target_host=None):
@@ -293,7 +293,7 @@ def tune_and_compile(graph: Graph, batch_size, target, target_host, device=None)
     mod, params = graph2relay(graph, batch_size)
     input_shape = (batch_size,) + tuple(graph.enter_node.output_shape)
     out_shape = (batch_size,) + tuple(graph.blocks[-1].exit_node.output_shape)
-    print(input_shape, out_shape)
+    # print(input_shape, out_shape)
 
     tasks = autotvm.task.extract_from_program(mod["main"], target=target, target_host=target_host,
                                               params=params, ops=(relay.op.nn.conv2d,))
@@ -307,7 +307,7 @@ def tune_and_compile(graph: Graph, batch_size, target, target_host, device=None)
 
     # compile kernels with history best records
     with autotvm.apply_history_best(log_file):
-        print("Compile...")
+        # print("Compile...")
         with relay.build_config(opt_level=3):  # opt_level = 3 has problem
             graph, lib, params = relay.build_module.build(mod, target=target, target_host=target_host, params=params)
 

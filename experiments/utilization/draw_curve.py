@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--seq_log_file', type=str, required=True)
 argparser.add_argument('--ios_log_file', type=str, required=True)
-argparser.add_argument('--running_mean_k', type=int, default=20)
+argparser.add_argument('--running_mean_k', type=int, default=2)
 argparser.add_argument('--truncate', type=int, default=0)
 args = argparser.parse_args()
 
@@ -36,13 +36,19 @@ def read_log(log_file):
 
 
 def main():
+    ylen = 100
     for label, log_file in [('Sequential', args.seq_log_file), ('IOS', args.ios_log_file)]:
-        x, y = read_log(log_file)
-        plt.plot(x, y, label=label)
+        _, y = read_log(log_file)
+        ylen = min(ylen, len(y))
+
+    for label, log_file in [('Sequential', args.seq_log_file), ('IOS', args.ios_log_file)]:
+        _, y = read_log(log_file)
+        y = y[:ylen]
+        plt.plot(list(range(1, len(y)+1)), y, label=label)
     plt.xlim(left=0)
-    plt.ylim(bottom=0)
+    plt.ylim(bottom=0, top=9e8)
     plt.ylabel('Active Warps / Time Stamp')
-    plt.xlabel('Time (ns)')
+    plt.xlabel('Time Stamp')
     plt.legend(loc='lower center')
     plt.savefig('active_warps.png')
 

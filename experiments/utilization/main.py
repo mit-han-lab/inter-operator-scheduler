@@ -23,7 +23,7 @@ os.makedirs(expr_dir, exist_ok=True)
 
 batch_size = 1
 warmup = 10000  # magic number to enable profiling
-number = 10000
+number = 1500
 repeat = 1
 
 

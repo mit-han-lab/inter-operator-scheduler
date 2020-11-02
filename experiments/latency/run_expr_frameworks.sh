@@ -1,6 +1,6 @@
 ename="framework"
 models="inception_v3 randwire nasnet squeezenet"
-opt_types="tvm_cudnn tf tf_xla taso"
+opt_types="tf tf_xla taso tvm_cudnn trt"
 cnt=1
 
 for model in $models; do

@@ -117,8 +117,8 @@ void * sampling_func(void *arg)
 #ifdef _WIN32
         Sleep(SAMPLE_PERIOD_MS);
 #else
-        usleep(SAMPLE_PERIOD_MS * 1000);
-//        usleep(1);
+//        usleep(SAMPLE_PERIOD_MS * 1000);
+        usleep(1);
 #endif
     }
     auto end = std::chrono::high_resolution_clock::now();

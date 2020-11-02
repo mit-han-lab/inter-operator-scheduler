@@ -10,7 +10,7 @@
         - ...
     - contrib (glue to connect python and IOS runtime implemented by C++)
         - ctypes_utils (helper functions to convert python objects to ctypes objects)
-        - runtime (measure latency and inference using IOS runtime)
+        - ios_runtime (measure latency and inference using IOS runtime)
         - trt_runtime (measure latency and inference using TensorRT)
     - cost_model (define cost models used in IOS optimizer)
     - ir (the intermediate representation of a network (IOS computation graph), the IR can be converted to torch, tvm, tensorflow, TASO, and tensorrt modules easily)
