@@ -30,7 +30,7 @@ resulting in a large gap between the peak performance and the real performance.
 This performance gap is more severe under smaller batch sizes.  
 In this work, we extensively study the parallelism between operators and propose Inter-Operator Scheduler (IOS) to automatically schedule the execution of multiple operators in parallel. 
 IOS utilizes dynamic programming to find a scheduling policy specialized for the target hardware. 
-IOS consistently outperforms state-of-the-art libraries (e.g., TensorRT) by 1.1 to 1.5xon modern CNN benchmarks.
+IOS consistently outperforms state-of-the-art libraries (e.g., TensorRT) by 1.1 to 1.5x on modern CNN benchmarks.
 
 
 <div align="center">
@@ -235,7 +235,7 @@ Because we need to customize the installation configuration (step 3 bellow), we 
    ```shell script
    git clone https://github.com/apache/incubator-tvm.git tvm
    cd tvm; 
-   git checkout v0.6  # you can change v0.6 to v0.7 or v0.8 to use higher version of TVM
+   git checkout v0.6  # you can change v0.6 to v0.7 or higher to use higher version of TVM
    git submodule update --resursive --init
    mkdir build; cp cmake/config.cmake build; 
    ```
@@ -574,7 +574,7 @@ Current IOS is implemented based on vendor-provided library cuDNN.
 We compare both of them to give us more insight about the intra- and inter-operator parallelism.
 Because AutoTVM is time consuming (it takes 26 hours on a 8-V100 server to optimize the four benchmark networks), we provide the schedule configs tuned by us in `tvm_schedule_configs` directory. 
 You can use these configs directly to reproduce the experiments.
-Please note that these schedule configs are optimized for NVIDIA Tesla V100 SXM2 with driver 450.51.05 and cuda toolkit 10.2. 
+Please note that these schedule configs are optimized for NVIDIA Tesla V100 SXM2 with driver 450.51.05 and cuda toolkit 10.2 using TVM v0.6. 
 If you want to tune the network by yourself, just delete the `./schedules` directory and we would tune the network using TVM and store the tuned schedule configs in `./tvm_schedule_configs` automatically.
 
 <div align="center">
@@ -598,4 +598,5 @@ Model: randwire     | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimizati
 Model: nasnet       | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimization cost: 28 sec   | Latency: 14.67 ms
 Model: squeezenet   | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimization cost: 13 sec   | Latency: 0.75 ms
 ```
-
+(The `Optimization cost` shown in the output is the time used to compile the network and measure latency, which does not include the time for auto-tuning, because we the pre-tuned configs are used.
+It takes about 26 hours on a 8-V100 server to tune the four networks.)
