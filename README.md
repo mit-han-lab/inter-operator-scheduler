@@ -598,5 +598,5 @@ Model: randwire     | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimizati
 Model: nasnet       | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimization cost: 28 sec   | Latency: 14.67 ms
 Model: squeezenet   | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimization cost: 13 sec   | Latency: 0.75 ms
 ```
-(The `Optimization cost` shown in the output is the time used to compile the network and measure latency, which does not include the time for auto-tuning, because we the pre-tuned configs are used.
+(The `Optimization cost` shown in the output is the time used to compile the network and measure latency, which does not include the time for auto-tuning, because the pre-tuned configs are used.
 It takes about 26 hours on a 8-V100 server to tune the four networks.)
