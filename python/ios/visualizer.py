@@ -91,6 +91,18 @@ def get_node_label(node, stage):
 
 
 def draw(graph: Graph, fname: str, label: str = ""):
+    """
+    Draw the computation graph and execution schedule.
+
+    :param graph: ios.Graph
+        The computation graph and schedule.
+
+    :param fname:
+        The output figure filename.
+
+    :param label:
+        The label of the figure.
+    """
     dgraph = pydot.Dot(graph_type='digraph', label=label)
 
     node_style = {

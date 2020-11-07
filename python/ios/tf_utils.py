@@ -44,7 +44,9 @@ def get_inputs(node, name2tensor, batch_size):
 def get_stride(stride):
     return (1, 1) + tuple(stride)
 
+
 use_constant = True
+
 
 def do_conv2d(name, x, input_shape, out_channels, groups, kernel, stride, padding, act, weights_np: np.ndarray, bias_np, use_correct=False):
     weights_name = name + "_weights"
@@ -154,6 +156,27 @@ def do_layer(node: Node, name2tensor, batch_size, use_correct=False):
 
 
 def graph_latency(graph: Graph, batch_size, warmup, number, repeat, xla=False, use_correct=False, use_profiler=False):
+    """
+    Measure the latency of computation graph in Tensorflow.
+
+    :param graph:
+        The computation graph to measure the latency.
+
+    :param batch_size:
+        Measure the latency under given batch size.
+
+    :param xla: boolean, default False
+        Whether turn on xla optimization.
+
+    :param use_correct: boolean, default False
+        Whether use the correct transformation.
+
+    :param use_profiler: boolean, default False
+        Whether use profiler to measure the latency.
+
+    :return: List[float]
+        The latency measurement results.
+    """
     config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth=True
     config.gpu_options.per_process_gpu_memory_fraction = 0.3

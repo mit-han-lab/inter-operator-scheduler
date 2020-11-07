@@ -5,6 +5,10 @@ from ios.contrib.ios_runtime import graph_latency, stage_latency, block_latency
 
 
 class CostModel:
+    """
+    Cost model is used to measure the latency of a stage, block, and computation graph. Cost model is used to guide the
+    optimization of IOS.
+    """
     def get_stage_latency(self, stage: List[List[Node]], batch_size, warmup, number, repeat, profile_stage=False) -> List[float]:
         raise NotImplementedError
 
@@ -16,6 +20,9 @@ class CostModel:
 
 
 class RandomCostModel(CostModel):
+    """
+    Random cost model return random results, which can be used to debug and generate random schedules.
+    """
     def get_graph_latency(self, graph: Graph, batch_size, warmup, number, repeat, profile_stage=False):
         return [float(np.random.rand()) for i in range(repeat)]
 
@@ -27,6 +34,9 @@ class RandomCostModel(CostModel):
 
 
 class IOSCostModel(CostModel):
+    """
+    IOS runtime cost model, which measure the latency by directly executing the stage on the hardware.
+    """
     def get_graph_latency(self, graph: Graph, batch_size, warmup, number, repeat, profile_stage=False):
         return graph_latency(graph, batch_size, warmup, number, repeat, profile_stage)
 

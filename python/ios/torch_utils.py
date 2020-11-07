@@ -59,6 +59,9 @@ def get_layer(node: Node, name2layer) -> nn.Module:
 
 
 class Net(nn.Module):
+    """
+    Construct equivalent torch Module.
+    """
     def __init__(self, graph: Graph):
         super(Net, self).__init__()
         name2layer = {}

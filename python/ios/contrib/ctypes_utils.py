@@ -1,3 +1,6 @@
+"""
+Convert python objects to c objects
+"""
 from typing import List, Iterable
 from ios.ir import Sequential, Node
 import numpy as np
@@ -20,7 +23,8 @@ def c_string_list(sl: List[str]):  # to char **
 
 def c_ndarray_list(al: List[np.ndarray]):  # to float **
     data_t = ctypes.c_void_p * len(al)
-    return ctypes.cast(data_t(*[a.ctypes.data_as(ctypes.c_void_p) if isinstance(a, np.ndarray) else ctypes.c_void_p(None) for a in al]), ctypes.POINTER(ctypes.c_void_p))
+    return ctypes.cast(data_t(*[a.ctypes.data_as(ctypes.c_void_p) if isinstance(a, np.ndarray)
+                                else ctypes.c_void_p(None) for a in al]), ctypes.POINTER(ctypes.c_void_p))
 
 
 def c_ndarray(a: np.ndarray):  # to float *

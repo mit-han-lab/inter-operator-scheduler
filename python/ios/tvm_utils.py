@@ -229,7 +229,7 @@ def relay_latency(relay_module, params, target, number, repeat, target_host=None
 
 def tune_and_compile(graph: Graph, batch_size, target, target_host, device=None):
     #
-    # this function is modified from tvm tutorial
+    # this function is adopted and modified from tvm tutorial
     #
     log_dir = "./tvm_schedule_configs"
     os.makedirs(log_dir, exist_ok=True)
@@ -339,6 +339,38 @@ def graph_inference(graph: Graph, batch_size, input: np.ndarray):
 
 
 def graph_latency_local(graph: Graph, batch_size, number, repeat, target, target_host=None, tune=False, device=None):
+    """
+    Measure the latency of graph in TVM.
+
+    :param graph: ios.Graph
+        The computation graph to measure the latency.
+
+    :param batch_size: int
+        The batch size used in the measurement.
+
+    :param number: int
+        The number of execution in one 'repeat'.
+
+    :param repeat: int
+        The number of 'repeat' in the measurement.
+
+    :param target: str
+        The compile target.
+        When target='cuda', TVM compile the computation graph to NVIDIA CUDA platform.
+        When target='cuda -libs=cudnn', TVM will use the cuDNN library to execute convolutions.
+
+    :param target_host: str or None, default None
+        The target host.
+
+    :param tune: boolean, default False
+        Whether to tune the network before measure the latency.
+
+    :param device: str or None, default None
+        The string used to represent execution device. Used in the schedule config name.
+
+    :return: List[float]
+        The measurement results.
+    """
     if tune:
         graph_json, tvm_module, params = tune_and_compile(graph, batch_size, target, target_host, device=device)
     else:

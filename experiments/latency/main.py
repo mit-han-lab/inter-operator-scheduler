@@ -141,9 +141,9 @@ def main():
             graph.greedy_schedule()
         else:
             graph = optimize(graph, args.bs, cost_model, args.opt_type, args.warmup, args.number, args.repeat,
-                             max_num_streams=args.s,
+                             max_num_groups=args.s,
                              max_part_size=50,
-                             max_seq_length=args.r,
+                             max_group_size=args.r,
                              compute_weight=False,
                              verbose=False)
         t2 = time.time()

@@ -5,6 +5,10 @@ verbose = False
 
 
 def get_conv_pool_pads(ishape, oshape, kernel, padding, stride):
+    """
+    Get the convolution and pooling pads mode based on specific padding and kernel. We need this function because IOS
+    convolution parameters design follows PyTorch while TASO's padding parameter design follows Tensorflow.
+    """
     if verbose:
         print(f"ishape: {ishape}")
         print(f"oshape: {oshape}")
@@ -23,14 +27,23 @@ def get_conv_pool_pads(ishape, oshape, kernel, padding, stride):
 
 
 def get_conv_pads(conv: Conv):
+    """
+    Get the padding mode of a convolution.
+    """
     return get_conv_pool_pads(conv.input_shape, conv.output_shape, conv.kernel, conv.padding, conv.stride)
 
 
 def get_pool_pads(pool: Pool):
+    """
+    Get the padding mode of a pooling.
+    """
     return get_conv_pool_pads(pool.input_shape, pool.output_shape, pool.kernel, pool.padding, pool.stride)
 
 
 def check_shape(node: Node, tensor, pads):
+    """
+    Check the output shape of ios.ir.Node and taso.Tensor. Used to make sure the network is converted correctly.
+    """
     ashape = node.output_shape
     bshape = [tensor.dim(i) for i in range(tensor.nDim)]
     for a, b in zip(ashape, bshape[1:]):
@@ -46,6 +59,9 @@ def check_shape(node: Node, tensor, pads):
 
 
 def conv2d(x, node: Conv, tg):
+    """
+    Add convolution to TASO computation graph.
+    """
     weight = tg.new_weight(dims=node.weight_shape)
     if node.act == "relu":
         acts = "RELU"
@@ -60,6 +76,9 @@ def conv2d(x, node: Conv, tg):
 
 
 def pool2d(x, pool: Pool, tg):
+    """
+    Add pooling to TASO computation graph.
+    """
     if pool.pool_type == 'global_avg':
         pads = "VALID"
         x = tg.avgpool2d(input=x, kernels=pool.kernel, strides=[1, 1], padding=pads)
@@ -76,12 +95,18 @@ def pool2d(x, pool: Pool, tg):
 
 
 def sequential(x, seq: Sequential, tg):
+    """
+    Add Sequential operator to TASO computation graph.
+    """
     for node in seq.nodes:
         x = do_layer(x, node, tg)
     return x
 
 
 def do_layer(x, node: Node, tg):
+    """
+    Add operator to TASO computation graph.
+    """
     if isinstance(node, Conv):
         x = conv2d(x, node, tg)
     elif isinstance(node, Pool):
@@ -109,10 +134,23 @@ def do_layer(x, node: Node, tg):
 
 
 def tensor2shape(tensor):
+    """
+    Return the shape string of tensor.
+    """
     return "(" + ",".join([str(tensor.dim(i)) for i in range(tensor.nDim)]) + ")"
 
 
 def graph_ios2taso(graph: Graph, batch_size):
+    """
+    Convert an IOS computation graph to TASO computation graph with given batch size.
+
+    :param graph: ios.ir.Graph
+        IOS computation graph.
+    :param batch_size:
+        Batch size that is used in the TASO computation graph.
+    :return: taso.Graph
+        The equivalent TASO computation graph to IOS's.
+    """
     node2var = {}
     tg = taso.new_graph()
 
@@ -152,6 +190,37 @@ def graph_ios2taso(graph: Graph, batch_size):
 
 
 def graph_latency(graph: Graph, batchsize, warmup, number, repeat, optimize, alpha=1.0, budget=1000):
+    """
+    Measure the latency of TASO optimized computation graph in TASO framework.
+
+    :param graph: ios.ir.Graph
+        The computation graph that is going to measure the latency.
+
+    :param batchsize: int
+        The execution batch size.
+
+    :param warmup: int
+        Not used.
+
+    :param number: int
+        Not used.
+
+    :param repeat: int
+        The number of latency measurement.
+
+    :param optimize: boolean
+        When optimize=True, optimize the computation graph in TASO and measure the latency.
+        When optimize=False, directly measure the latency in TASO.
+
+    :param alpha:
+        The relaxation coefficient.
+
+    :param budget:
+        The iteration budget.
+
+    :return: List[float]
+        The latency measurement results.
+    """
     tg = graph_ios2taso(graph, batchsize)
     if optimize:
         tg = taso.optimize(tg, alpha=alpha, budget=budget)
