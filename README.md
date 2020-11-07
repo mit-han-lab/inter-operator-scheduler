@@ -1,28 +1,28 @@
-# IOS: Inter-Operator Scheduler for CNN Acceleration
+# IOS: Inter-Operator Scheduler for CNN Acceleration [[arXiv]](https://arxiv.org/abs/2011.01302)
 
-- [IOS: Inter-Operator Scheduler for CNN Acceleration](#ios--inter-operator-scheduler-for-cnn-acceleration)
-  * [1. Methodology](#1-methodology)
-  * [2. Installation](#2-installation)
-    + [2.1 Prerequisites](#21-prerequisites)
-    + [2.2 Build IOS runtime](#22-build-ios-runtime)
-    + [2.3 Install IOS python package](#23-install-ios-python-package)
-  * [3. Usage](#3-usage)
-  * [4. Experiments](#4-experiments)
-    + [4.1 Experiment Environment Setup](#41-experiment-environment-setup)
-      - [4.1.1 Install TensorRT runtime in IOS](#411-install-tensorrt-runtime-in-ios)
-      - [4.1.2 Install TVM](#412-install-tvm)
-      - [4.1.3 Install TASO](#413-install-taso)
-      - [4.1.4 Install Tensorflow](#414-install-tensorflow)
-      - [4.1.5 Install PyTorch](#415-install-pytorch)
-      - [4.1.5 Lock GPU Clock Rate](#415-lock-gpu-clock-rate)
-    + [4.2 Experiments and ablation study](#42-experiments-and-ablation-study)
-      - [4.2.1 Comparison of Different Schedules](#421-comparison-of-different-schedules)
-      - [4.2.2 Comparison of cuDNN-based Frameworks](#422-comparison-of-cudnn-based-frameworks)
-      - [4.2.3 Utilization Profiling](#423-utilization-profiling)
-      - [4.2.4 Specialized Scheduling is Beneficial](#424-specialized-scheduling-is-beneficial)
-      - [4.2.5 Schedule Pruning Reduce Search Time](#425-schedule-pruning-reduce-search-time)
-      - [4.2.6 Consistent Improvement for Different Batch Sizes](#426-consistent-improvement-for-different-batch-sizes)
-      - [4.2.7 Intra- and Inter-Operator Parallelism](#427-intra--and-inter-operator-parallelism)
+
+* [1. Methodology](#1-methodology)
+* [2. Installation](#2-installation)
+  + [2.1 Prerequisites](#21-prerequisites)
+  + [2.2 Build IOS runtime](#22-build-ios-runtime)
+  + [2.3 Install IOS python package](#23-install-ios-python-package)
+* [3. Usage](#3-usage)
+* [4. Experiments](#4-experiments)
+  + [4.1 Experiment Environment Setup](#41-experiment-environment-setup)
+    - [4.1.1 Install TensorRT runtime in IOS](#411-install-tensorrt-runtime-in-ios)
+    - [4.1.2 Install TVM](#412-install-tvm)
+    - [4.1.3 Install TASO](#413-install-taso)
+    - [4.1.4 Install Tensorflow](#414-install-tensorflow)
+    - [4.1.5 Install PyTorch](#415-install-pytorch)
+    - [4.1.5 Lock GPU Clock Rate](#415-lock-gpu-clock-rate)
+  + [4.2 Experiments and ablation study](#42-experiments-and-ablation-study)
+    - [4.2.1 Comparison of Different Schedules](#421-comparison-of-different-schedules)
+    - [4.2.2 Comparison of cuDNN-based Frameworks](#422-comparison-of-cudnn-based-frameworks)
+    - [4.2.3 Utilization Profiling](#423-utilization-profiling)
+    - [4.2.4 Specialized Scheduling is Beneficial](#424-specialized-scheduling-is-beneficial)
+    - [4.2.5 Schedule Pruning Reduce Search Time](#425-schedule-pruning-reduce-search-time)
+    - [4.2.6 Consistent Improvement for Different Batch Sizes](#426-consistent-improvement-for-different-batch-sizes)
+    - [4.2.7 Intra- and Inter-Operator Parallelism](#427-intra--and-inter-operator-parallelism)
 
 To accelerate CNN inference, existing deep learning frameworks focus on optimizing intra-operator parallelization.
 However, a single operator can no longer fully utilize the available parallelism given the rapid advances in high-performance hardware, 
@@ -598,5 +598,5 @@ Model: randwire     | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimizati
 Model: nasnet       | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimization cost: 28 sec   | Latency: 14.67 ms
 Model: squeezenet   | Optimization: TVM-AutoTune    | Batchsize: 1  | Optimization cost: 13 sec   | Latency: 0.75 ms
 ```
-(The `Optimization cost` shown in the output is the time used to compile the network and measure latency, which does not include the time for auto-tuning, because we the pre-tuned configs are used.
+(The `Optimization cost` shown in the output is the time used to compile the network and measure latency, which does not include the time for auto-tuning, because the pre-tuned configs are used.
 It takes about 26 hours on a 8-V100 server to tune the four networks.)
