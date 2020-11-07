@@ -1,25 +1,50 @@
 #include <cstdio>
 #include <sstream>
 #include <fstream>
-#include <cudnn.h>
 #include <map>
 #include <iostream>
 #include <string>
 #include <cassert>
+#include <cstdint>
+
 #include <unistd.h>
 #include <pthread.h>
+#include <cudnn.h>
 
 #include "ios/ops.h"
 #include "ios/profile.h"
 #include "utils/json.h"
 #include "utils/utils.h"
 
+#if defined(USE_FLOAT16)
+typedef __half bias_data_type;
+cudnnDataType_t cudnn_bias_data_type = CUDNN_DATA_HALF;
+cudnnDataType_t cudnn_data_type = CUDNN_DATA_HALF;
+cudnnDataType_t cudnn_conv_data_type = CUDNN_DATA_FLOAT;
+#elif defined(USE_INT8)
+typedef float bias_data_type;
+cudnnDataType_t cudnn_bias_data_type = CUDNN_DATA_FLOAT;
+cudnnDataType_t cudnn_data_type = CUDNN_DATA_INT8;
+cudnnDataType_t cudnn_conv_data_type = CUDNN_DATA_INT32;
+#else // USE_FLOAT32
+typedef float bias_data_type;
+cudnnDataType_t cudnn_bias_data_type = CUDNN_DATA_FLOAT;
+cudnnDataType_t cudnn_data_type = CUDNN_DATA_FLOAT;
+cudnnDataType_t cudnn_conv_data_type = CUDNN_DATA_FLOAT;
+#endif
+
+#if defined(USE_TENSOR_CORE)
+cudnnTensorFormat_t cudnn_data_format = CUDNN_TENSOR_NCHW;
+#else
+cudnnTensorFormat_t cudnn_data_format = CUDNN_TENSOR_NCHW;
+#endif
+
 #define CONTEXT_WORKSPACE_SIZE 128 * 1024 * 1024 // 256 MB
-#define MAX_NUM_STREAMS 10
+#define MAX_NUM_GROUPS 10
 #define MAX_NUM_VALUES 10
 #define MAX_NUM_TERMS 10
 #define MAX_NUM_NODES 1000
-#define MAX_SEQ_LENGTH 40
+#define MAX_GROUP_SIZE 40
 
 using std::vector;
 using std::map;
@@ -27,21 +52,6 @@ using std::stringstream;
 using std::string;
 using std::size_t;
 
-void statistics(float *sum, float *vmin, float *vmax, float *data, size_t size) {
-    float *hdata;
-    int cnt = int(size / sizeof(float));
-    *sum = 0.0;
-    *vmin = 1e18;
-    *vmax = -1e18;
-    checkCUDA(cudaMallocHost(&hdata, size));
-    checkCUDA(cudaMemcpy(hdata, data, size, cudaMemcpyDeviceToHost));
-    for (int k = 0; k < cnt; k++) {
-        *sum += hdata[k];
-        *vmin = std::min(*vmin, hdata[k]);
-        *vmax = std::max(*vmax, hdata[k]);
-    }
-    checkCUDA(cudaFreeHost(hdata));
-}
 
 struct ConvKey {
     int attrs[12];
@@ -115,7 +125,7 @@ struct CudnnContext {
     cudnnHandle_t dnn;
     cudaStream_t stream;
     size_t max_size;
-    float *space;
+    data_type *space;
     CudnnContext(size_t max_size = CONTEXT_WORKSPACE_SIZE) {
         init_profile();
         this->max_size = max_size;
@@ -131,14 +141,14 @@ struct CudnnContext {
     }
 };
 
-CudnnContext contexts[MAX_NUM_STREAMS];
+CudnnContext contexts[MAX_NUM_GROUPS];
 
 
 cudnnConvolutionFwdAlgo_t get_conv_alg(int batch_size, int in_channels, int input_h, int input_w, int out_channels, int kernel_h, int kernel_w, int stride_h, int stride_w, int padding_h, int padding_w, int groups) {
     ConvKey key(batch_size, in_channels, input_h, input_w, out_channels, kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w, groups);
     if(conv_alg_map.count(key))
         return conv_alg_map.get(key);
-    float *input_data, *filter_data, *output_data;
+    data_type *input_data, *filter_data, *output_data;
     int output_h = 1 + (input_h - kernel_h + 2 * padding_h) / stride_h;
     int output_w = 1 + (input_w - kernel_w + 2 * padding_w) / stride_w;
     cudnnTensorDescriptor_t inputTensor, outputTensor;
@@ -148,10 +158,10 @@ cudnnConvolutionFwdAlgo_t get_conv_alg(int batch_size, int in_channels, int inpu
     checkCUDNN(cudnnCreateFilterDescriptor(&filterDesc));
     checkCUDNN(cudnnCreateTensorDescriptor(&outputTensor));
     checkCUDNN(cudnnCreateConvolutionDescriptor(&convDesc));
-    checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch_size, in_channels, input_h, input_w));
+    checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, batch_size, in_channels, input_h, input_w));
     assert(in_channels % groups == 0);
-    checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, out_channels, in_channels / groups, kernel_h, kernel_w));
-    checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc, padding_h, padding_w, stride_h, stride_w, 1/*dilationH*/, 1/*dilationW*/, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+    checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc, cudnn_data_type, CUDNN_TENSOR_NCHW, out_channels, in_channels / groups, kernel_h, kernel_w));
+    checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc, padding_h, padding_w, stride_h, stride_w, 1/*dilationH*/, 1/*dilationW*/, CUDNN_CROSS_CORRELATION, cudnn_conv_data_type));
     checkCUDNN(cudnnSetConvolutionGroupCount(convDesc, groups));
     int n, c, h, w;
     checkCUDNN(cudnnGetConvolution2dForwardOutputDim(convDesc, inputTensor, filterDesc, &n, &c, &h, &w));
@@ -159,11 +169,11 @@ cudnnConvolutionFwdAlgo_t get_conv_alg(int batch_size, int in_channels, int inpu
     assert(c == out_channels);
     assert(h == output_h);
     assert(w == output_w);
-    checkCUDNN(cudnnSetTensor4dDescriptor(outputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, n, c, h, w));
+    checkCUDNN(cudnnSetTensor4dDescriptor(outputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, n, c, h, w));
 
-    size_t input_size = sizeof(float) * batch_size * in_channels * input_h * input_w;
-    size_t filter_size = sizeof(float) * out_channels * (in_channels / groups)* kernel_h * kernel_w;
-    size_t output_size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+    size_t input_size = sizeof(data_type) * batch_size * in_channels * input_h * input_w;
+    size_t filter_size = sizeof(data_type) * out_channels * (in_channels / groups)* kernel_h * kernel_w;
+    size_t output_size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
     checkCUDA(cudaMalloc(&input_data, input_size));
     checkCUDA(cudaMalloc(&filter_data, filter_size));
     checkCUDA(cudaMalloc(&output_data, output_size));
@@ -191,7 +201,6 @@ cudnnConvolutionFwdAlgo_t get_conv_alg(int batch_size, int in_channels, int inpu
 }
 
 struct ConvOP {
-    int t = 0;
     int batch_size;
     int in_channels;
     int out_channels;
@@ -218,10 +227,10 @@ struct ConvOP {
     cudnnFilterDescriptor_t filterDesc;
     cudnnActivationDescriptor_t actiDesc;
 
-    float *input_data;
-    float *output_data;
-    float *filter_data;
-    float *bias_data;
+    data_type *input_data;
+    data_type *output_data;
+    data_type *filter_data;
+    data_type *bias_data;
 
     void init(int batch_size, int in_channels, int input_h, int input_w, int out_channels, int kernel_h, int kernel_w, int stride_h, int stride_w, int padding_h, int padding_w, int groups, string act) {
         this->batch_size = batch_size;
@@ -242,12 +251,12 @@ struct ConvOP {
         this->output_w = 1 + (input_w - kernel_w + 2 * padding_w) / stride_w;
     }
     size_t get_filter_size() {
-        return sizeof(float) * out_channels * (in_channels / groups) * kernel_h * kernel_w;
+        return sizeof(data_type) * out_channels * (in_channels / groups) * kernel_h * kernel_w;
     }
     size_t get_bias_size() {
-        return sizeof(float) * out_channels;
+        return sizeof(bias_data_type) * out_channels;
     }
-    void map(float *input_data, CudnnContext *context) {
+    void map(data_type *input_data, CudnnContext *context) {
         this->input_data = input_data;
         this->context = context;
         checkCUDNN(cudnnCreateTensorDescriptor(&inputTensor));
@@ -255,11 +264,11 @@ struct ConvOP {
         checkCUDNN(cudnnCreateFilterDescriptor(&filterDesc));
         checkCUDNN(cudnnCreateTensorDescriptor(&outputTensor));
         checkCUDNN(cudnnCreateConvolutionDescriptor(&convDesc));
-        checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch_size, in_channels, input_h, input_w));
-        checkCUDNN(cudnnSetTensor4dDescriptor(biasTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, out_channels, 1, 1));
+        checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, batch_size, in_channels, input_h, input_w));
+        checkCUDNN(cudnnSetTensor4dDescriptor(biasTensor, CUDNN_TENSOR_NCHW, cudnn_bias_data_type, 1, out_channels, 1, 1));
         assert(in_channels % groups == 0);
-        checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, out_channels, in_channels / groups, kernel_h, kernel_w));
-        checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc, padding_h, padding_w, stride_h, stride_w, 1/*dilationH*/, 1/*dilationW*/, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+        checkCUDNN(cudnnSetFilter4dDescriptor(filterDesc, cudnn_data_type, CUDNN_TENSOR_NCHW, out_channels, in_channels / groups, kernel_h, kernel_w));
+        checkCUDNN(cudnnSetConvolution2dDescriptor(convDesc, padding_h, padding_w, stride_h, stride_w, 1/*dilationH*/, 1/*dilationW*/, CUDNN_CROSS_CORRELATION, cudnn_conv_data_type));
         checkCUDNN(cudnnSetConvolutionGroupCount(convDesc, groups));
         int n, c, h, w;
         checkCUDNN(cudnnGetConvolution2dForwardOutputDim(convDesc, inputTensor, filterDesc, &n, &c, &h, &w));
@@ -267,7 +276,7 @@ struct ConvOP {
         assert(c == out_channels);
         assert(h == output_h);
         assert(w == output_w);
-        checkCUDNN(cudnnSetTensor4dDescriptor(outputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, n, c, h, w));
+        checkCUDNN(cudnnSetTensor4dDescriptor(outputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, n, c, h, w));
         if (has_act) {
             cudnnActivationMode_t act_mode;
             if(act == "relu") {
@@ -285,15 +294,15 @@ struct ConvOP {
 
         size_t filter_size = get_filter_size();
         size_t bias_size = get_bias_size();
-        size_t output_size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+        size_t output_size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
         checkCUDA(cudaMalloc(&filter_data, filter_size));
         checkCUDA(cudaMalloc(&bias_data, bias_size));
         checkCUDA(cudaMalloc(&output_data, output_size));
         this->conv_alg = get_conv_alg(batch_size, in_channels, input_h, input_w, out_channels, kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w, groups);
     }
     void forward() {
-        const float alpha = 1.0f;
-        const float beta = 0.0f;
+        const data_type alpha = 1.0f;
+        const data_type beta = 0.0f;
         if(has_act) {
             checkCUDNN(cudnnConvolutionBiasActivationForward(
                     context->dnn, &alpha, inputTensor, input_data, filterDesc, filter_data,
@@ -344,8 +353,8 @@ struct ActivationOP {
     cudnnTensorDescriptor_t inputTensor;
     cudnnActivationDescriptor_t actiDesc;
 
-    float *input_data;
-    float *output_data;
+    data_type *input_data;
+    data_type *output_data;
     CudnnContext *context;
 
     void init(int batch_size, int in_channels, int input_h, int input_w, int act_type, bool inplace) {
@@ -360,12 +369,12 @@ struct ActivationOP {
         this->output_w = input_w;
         this->context = nullptr;
     }
-    void map(float *input_data, CudnnContext *context) {
+    void map(data_type *input_data, CudnnContext *context) {
         // create descriptors
         this->input_data = input_data;
         this->context = context;
         checkCUDNN(cudnnCreateTensorDescriptor(&inputTensor));
-        checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch_size, in_channels, input_h, input_w));
+        checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, batch_size, in_channels, input_h, input_w));
         checkCUDNN(cudnnCreateActivationDescriptor(&actiDesc));
         cudnnActivationMode_t mode;
         switch (act_type) {
@@ -383,7 +392,7 @@ struct ActivationOP {
         }
         checkCUDNN(cudnnSetActivationDescriptor(actiDesc, mode, CUDNN_NOT_PROPAGATE_NAN, 0.0));
         if (!inplace) {
-            size_t size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+            size_t size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
             checkCUDA(cudaMalloc(&output_data, size));
         } else {
             this->output_data = input_data;
@@ -399,8 +408,8 @@ struct ActivationOP {
     }
 
     void forward() {
-        const float alpha = 1.0f;
-        const float beta = 0.0f;
+        const data_type alpha = 1.0f;
+        const data_type beta = 0.0f;
         checkCUDNN(cudnnActivationForward(context->dnn, actiDesc, &alpha, inputTensor, input_data, &beta, inputTensor, output_data));
     }
 };
@@ -418,9 +427,9 @@ struct ElementOP {
     cudnnTensorDescriptor_t inputTensor;
     cudnnOpTensorDescriptor_t opDesc;
 
-    float *input_a;
-    float *input_b;
-    float *output_data;
+    data_type *input_a;
+    data_type *input_b;
+    data_type *output_data;
     CudnnContext *context;
 
     void init(int batch_size, int channels, int h, int w, int op_type) {
@@ -431,16 +440,16 @@ struct ElementOP {
         this->op_type = op_type;
         this->context = nullptr;
     }
-    void map(float *input_a, float *input_b, CudnnContext *context) {
+    void map(data_type *input_a, data_type *input_b, CudnnContext *context) {
         this->input_a = input_a;
         this->input_b = input_b;
-        size_t size = sizeof(float) * batch_size * channels * h * w;
+        size_t size = sizeof(data_type) * batch_size * channels * h * w;
         this->context = context;
         checkCUDA(cudaMalloc(&output_data, size));
 
         checkCUDNN(cudnnCreateTensorDescriptor(&inputTensor));
         checkCUDNN(cudnnCreateOpTensorDescriptor(&opDesc));
-        checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch_size, channels, h, w));
+        checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, batch_size, channels, h, w));
         cudnnOpTensorOp_t opType;
         if(op_type == MUL)
             opType = CUDNN_OP_TENSOR_MUL;
@@ -448,11 +457,11 @@ struct ElementOP {
             opType = CUDNN_OP_TENSOR_ADD;
         else
             FatalError("not supported elementwise op");
-        checkCUDNN(cudnnSetOpTensorDescriptor(opDesc, opType, CUDNN_DATA_FLOAT, CUDNN_NOT_PROPAGATE_NAN));
+        checkCUDNN(cudnnSetOpTensorDescriptor(opDesc, opType, cudnn_data_type, CUDNN_NOT_PROPAGATE_NAN));
     }
     void forward() {
-        const float alpha = 1.0f;
-        const float beta = 0.0f;
+        const data_type alpha = 1.0f;
+        const data_type beta = 0.0f;
         checkCUDNN(cudnnOpTensor(context->dnn, opDesc, &alpha, inputTensor, input_a, &alpha, inputTensor, input_b, &beta, inputTensor, output_data));
     }
     void unmap() {
@@ -487,8 +496,8 @@ struct PoolOP {
 
     CudnnContext *context;
 
-    float *input_data;
-    float *output_data;
+    data_type *input_data;
+    data_type *output_data;
 
     void init(int batch_size, int in_channels, int input_h, int input_w, int kernel_h, int kernel_w, int stride_h, int stride_w, int padding_h, int padding_w, int pool_type) {
         this->batch_size = batch_size;
@@ -507,7 +516,7 @@ struct PoolOP {
         this->output_h = 1 + (input_h - kernel_h + 2 * padding_h) / stride_h;
         this->output_w = 1 + (input_w - kernel_w + 2 * padding_w) / stride_w;
     }
-    void map(float *input_data, CudnnContext *context) {
+    void map(data_type *input_data, CudnnContext *context) {
         this->input_data = input_data;
         this->context = context;
         checkCUDNN(cudnnCreateTensorDescriptor(&inputTensor));
@@ -515,7 +524,7 @@ struct PoolOP {
         checkCUDNN(cudnnCreatePoolingDescriptor(&poolDesc));
         // set descriptors
         checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW,
-                                              CUDNN_DATA_FLOAT, batch_size, in_channels, input_h, input_w));
+                                              cudnn_data_type, batch_size, in_channels, input_h, input_w));
         cudnnPoolingMode_t mode;
         if(pool_type == MAX_POOL) {
             mode = CUDNN_POOLING_MAX;
@@ -531,14 +540,14 @@ struct PoolOP {
         assert(c == out_channels);
         assert(h == output_h);
         assert(w == output_w);
-        checkCUDNN(cudnnSetTensor4dDescriptor(outputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, n, c, h, w));
+        checkCUDNN(cudnnSetTensor4dDescriptor(outputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type, n, c, h, w));
 
-        size_t size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+        size_t size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
         checkCUDA(cudaMalloc(&output_data, size));
     }
     void forward() {
-        const float alpha = 1.0f;
-        const float beta = 0.0f;
+        const data_type alpha = 1.0f;
+        const data_type beta = 0.0f;
         checkCUDNN(cudnnPoolingForward(context->dnn, poolDesc, &alpha, inputTensor, input_data, &beta, outputTensor, output_data));
     }
     void unmap() {
@@ -558,7 +567,7 @@ struct NodeBase {
     int out_channels;
     int output_h;
     int output_w;
-    float *output_data;
+    data_type *output_data;
     void print_shape() {
         fprintf(stderr, "%s %d %d %d %d\n", name.c_str(), batch_size, out_channels, output_h, output_w);
     }
@@ -588,7 +597,7 @@ struct Placeholder: NodeBase {
         this->output_data = nullptr;
     }
     void map() override {
-        size_t size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+        size_t size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
         checkCUDA(cudaMalloc(&output_data, size));
     }
     void forward() override {}
@@ -620,7 +629,7 @@ struct Value: NodeBase {
             if (begin == 0 && end == node->out_channels) {
                 output_data = node->output_data;
             } else {
-                size_t size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+                size_t size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
                 checkCUDA(cudaMalloc(&output_data, size));
             }
         }
@@ -684,11 +693,11 @@ struct Term: NodeBase {
         } else {
             checkCUDNN(cudnnCreateTensorDescriptor(&inputTensor));
             checkCUDNN(cudnnCreateOpTensorDescriptor(&opDesc));
-            checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
+            checkCUDNN(cudnnSetTensor4dDescriptor(inputTensor, CUDNN_TENSOR_NCHW, cudnn_data_type,
                     values[0].batch_size, values[0].out_channels, values[0].output_h, values[0].output_w));
 
-            checkCUDNN(cudnnSetOpTensorDescriptor(opDesc, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_NOT_PROPAGATE_NAN));
-            size_t size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+            checkCUDNN(cudnnSetOpTensorDescriptor(opDesc, CUDNN_OP_TENSOR_ADD, cudnn_data_type, CUDNN_NOT_PROPAGATE_NAN));
+            size_t size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
             checkCUDA(cudaMalloc(&output_data, size));
         }
     }
@@ -722,8 +731,8 @@ struct Term: NodeBase {
                     break;
                 default:
                     for(int i = 0; i < num_values; i++) {
-                        const float alpha = 1.0;
-                        const float beta = (i == 0 ? 0.0f : 1.0f);
+                        const data_type alpha = 1.0;
+                        const data_type beta = (i == 0 ? 0.0f : 1.0f);
                         checkCUDNN(cudnnAddTensor(context->dnn, &alpha, inputTensor, values[i].output_data, &beta, inputTensor, output_data));
                     }
             }
@@ -758,7 +767,7 @@ struct Input: NodeBase {
         if(num_terms == 1) {
             this->output_data = terms[0].output_data;
         } else {
-            size_t size = sizeof(float) * batch_size * out_channels * output_h * output_w;
+            size_t size = sizeof(data_type) * batch_size * out_channels * output_h * output_w;
             checkCUDA(cudaMalloc(&output_data, size));
         }
     }
@@ -1085,8 +1094,8 @@ struct Graph {
 
     int num_stages;
     int stage_num_seq[MAX_NUM_NODES];
-    int stage_seq_num_op[MAX_NUM_NODES][MAX_NUM_STREAMS];
-    NodeBase* stages[MAX_NUM_NODES][MAX_NUM_STREAMS][MAX_SEQ_LENGTH];
+    int stage_seq_num_op[MAX_NUM_NODES][MAX_NUM_GROUPS];
+    NodeBase* stages[MAX_NUM_NODES][MAX_NUM_GROUPS][MAX_GROUP_SIZE];
 
     void reset() {
         num_inputs = num_convs = num_pools = num_idents = num_relus = num_elem = num_acts = num_sequential = num_stages = 0;
@@ -1215,18 +1224,18 @@ struct Graph {
         }
         num_stages++;
     }
-    void set_input(float *input_data /*in host memory space*/) {
-        size_t size = sizeof(float) * inputs[0].batch_size * inputs[0].out_channels * inputs[0].output_h * inputs[0].output_w;
+    void set_input(data_type *input_data /*in host memory space*/) {
+        size_t size = sizeof(data_type) * inputs[0].batch_size * inputs[0].out_channels * inputs[0].output_h * inputs[0].output_w;
         checkCUDA(cudaMemcpy(inputs[0].output_data, input_data, size, cudaMemcpyKind::cudaMemcpyHostToDevice));
     }
-    void get_output(float *output_data) {
+    void get_output(data_type *output_data) {
         assert(stage_num_seq[num_stages-1] == 1);
         NodeBase *nb = stages[num_stages-1][0][stage_seq_num_op[num_stages-1][0]-1];
-        size_t size = sizeof(float) * nb->batch_size * nb->out_channels * nb->output_h * nb->output_w;
+        size_t size = sizeof(data_type) * nb->batch_size * nb->out_channels * nb->output_h * nb->output_w;
         checkCUDA(cudaMemcpy(output_data, nb->output_data, size, cudaMemcpyDeviceToHost));
     }
 
-    void set_conv_weights(char *name, float *weight, float *bias) {
+    void set_conv_weights(char *name, data_type *weight, data_type *bias) {
         Conv *conv = nullptr;
         for(int i = 0; i < num_convs; i++) {
             if(convs[i].name == string(name)) {
@@ -1254,19 +1263,19 @@ struct Graph {
             for(int j = 0; j < stage_num_seq[i]; j++)
                 for(int k = 0; k < stage_seq_num_op[i][j]; k++)
                     stages[i][j][k]->map();
-            if(stage_num_seq[i] > MAX_NUM_STREAMS) {
-                fprintf(stderr, "The number of nodes in stage %d exceed the number of avaliable streams %d\n", (int)stage_num_seq[i], MAX_NUM_STREAMS);
-                assert(stage_num_seq[i] <= MAX_NUM_STREAMS);
+            if(stage_num_seq[i] > MAX_NUM_GROUPS) {
+                fprintf(stderr, "The number of nodes in stage %d exceed the number of available streams %d\n", (int)stage_num_seq[i], MAX_NUM_GROUPS);
+                assert(stage_num_seq[i] <= MAX_NUM_GROUPS);
             }
         }
     }
-    static void print(const char *str, float *device_data, int cnt) {
-        size_t size = sizeof(float) * cnt;
-        auto * host_data = (float*)malloc(size);
+    static void print(const char *str, data_type *device_data, int cnt) {
+        size_t size = sizeof(data_type) * cnt;
+        auto * host_data = (data_type*)malloc(size);
         checkCUDA(cudaMemcpy(host_data, device_data, size, cudaMemcpyKind::cudaMemcpyDeviceToHost));
         printf("%s ", str);
         for(int i = 0; i < cnt; i++)
-            printf("%+2.3f ", host_data[i]);
+            printf("%+2.3f ", (double)host_data[i]);
         printf("\n");
         free(host_data);
     }
@@ -1465,9 +1474,9 @@ DLL void stage_latency(const char *stage_json, const char *input_json, int batch
     graph.measure_stage_latency(warmup, number, repeat, results, profile_stage_latency, stage_results);
 }
 
-DLL void graph_inference(const char *graph_json, int batch_size, float *input,
-                         int num_convs, char **conv_names, float **filter_data, float **bias_data,
-                         float *output) {
+DLL void graph_inference(const char *graph_json, int batch_size, data_type *input,
+                         int num_convs, char **conv_names, data_type **filter_data, data_type **bias_data,
+                         data_type *output) {
     Json::Value graph_config;
     stringstream in(graph_json);
     in >> graph_config;

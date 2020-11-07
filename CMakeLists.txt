@@ -28,8 +28,24 @@ add_library(ios_runtime SHARED ${IOS_SRCS})
 target_link_libraries(ios_runtime ${CUDA_CUDA_LIBRARY} ${CUDA_CUDNN_LIBRARY}
         ${CUDA_CUDART_LIBRARY}
         ${CUDA_CUPTI_LIBRARY}
-#        ${CUDA_TOOLKIT_ROOT_DIR}/extras/CUPTI/lib64/libcupti.so
-        ) #pthread
+        )
+if ("${USE_DATA_TYPE}" STREQUAL "INT8")
+    message("-- Use INT8 data type in ios runtime")
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_INT8)
+elseif ("${USE_DATA_TYPE}" STREQUAL "FLOAT16")
+    message("-- Use FLOAT16 data type in ios runtime")
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_FLOAT16)
+else()
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_FLOAT32)
+endif()
+
+if ("${USE_TENSOR_CORE}" STREQUAL "ON")
+    message("-- USE_TENSOR_CORE = ON")
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_TENSOR_CORE)
+else()
+    # do not use tensor core
+endif()
+
 set_target_properties(ios_runtime PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 if(NOT "${USE_TRT}" STREQUAL "OFF")
