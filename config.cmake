@@ -13,5 +13,5 @@ set(USE_TRT OFF)
 set(USE_DATA_TYPE FLOAT32)
 
 # - When USE_TENSOR_CORE=OFF, IOS runtime will not utilize Tensor Core in the computation
-# - When USE_TENSOR_CORE=ON, IOS runtime will utilize Tensor Core in the computation
+# - When USE_TENSOR_CORE=ON, IOS runtime will utilize Tensor Core in the computation.
 set(USE_TENSOR_CORE OFF)

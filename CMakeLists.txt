@@ -29,21 +29,28 @@ target_link_libraries(ios_runtime ${CUDA_CUDA_LIBRARY} ${CUDA_CUDNN_LIBRARY}
         ${CUDA_CUDART_LIBRARY}
         ${CUDA_CUPTI_LIBRARY}
         )
-if ("${USE_DATA_TYPE}" STREQUAL "INT8")
-    message("-- Use INT8 data type in ios runtime")
-    target_compile_definitions(ios_runtime PUBLIC -DUSE_INT8)
-elseif ("${USE_DATA_TYPE}" STREQUAL "FLOAT16")
-    message("-- Use FLOAT16 data type in ios runtime")
-    target_compile_definitions(ios_runtime PUBLIC -DUSE_FLOAT16)
-else()
-    target_compile_definitions(ios_runtime PUBLIC -DUSE_FLOAT32)
-endif()
 
 if ("${USE_TENSOR_CORE}" STREQUAL "ON")
     message("-- USE_TENSOR_CORE = ON")
+    if ("${USE_DATA_TYPE}" STREQUAL "INT8")
+        message("-- Tensor core does not support INT8 data type, change it to FLOAT16")
+        set(USE_DATA_TYPE "FLOAT16")
+    endif()
     target_compile_definitions(ios_runtime PUBLIC -DUSE_TENSOR_CORE)
 else()
+    message("-- USE_TENSOR_CORE = OFF")
     # do not use tensor core
+endif()
+
+if ("${USE_DATA_TYPE}" STREQUAL "INT8")
+    message("-- Use INT8 data type")
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_INT8)
+elseif ("${USE_DATA_TYPE}" STREQUAL "FLOAT16")
+    message("-- Use FLOAT16 data type")
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_FLOAT16)
+else()
+    message("-- Use FLOAT32 data type")
+    target_compile_definitions(ios_runtime PUBLIC -DUSE_FLOAT32)
 endif()
 
 set_target_properties(ios_runtime PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
