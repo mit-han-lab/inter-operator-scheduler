@@ -5,6 +5,8 @@ cmake-build-debug/
 **/*_ignore
 conv2alg.txt
 
+.vscode
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
