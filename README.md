@@ -215,6 +215,10 @@ conda activate ios
    mkdir -p build; cd build; cmake ..; make -j4; cd ..
    cd python; python setup.py install; cd ..
    ```
+5. Add `/path/to/tensorrt/lib` to the end of `LD_LIBRARY_PATH`.
+   ```shell script
+   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/TensorRT-x.x.x.x/lib
+   ```
 
 Now we finished the installation of TensorRT runtime in IOS. We can infer the IOS computation graph and measure its latency using `ios.trt_runtime` module as follows
 ```python
