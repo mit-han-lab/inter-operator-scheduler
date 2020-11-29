@@ -4,8 +4,9 @@ import operator
 import numpy as np
 import logging
 import itertools
+from tqdm import tqdm
 from ios.ir import Graph, Block, Conv, Value, Pool, Placeholder, Node, Identity, Sequential
-from ios.cost_model import CostModel, IOSCostModel
+from ios.cost_model import CostModel, IOSCostModel, RandomCostModel
 from ios.utils import iter_subset
 
 logging.disable(logging.WARNING)
@@ -13,6 +14,25 @@ logging.disable(logging.WARNING)
 # The representation of computation graph by index
 IGraph = Dict[int, List[int]]
 
+def graph_dp_summary(graph: Graph,
+                  opt_type: str = 'dp_parallel_merge',
+                  max_num_groups=8, max_part_size=50, max_group_size=3):
+    debug_dp_info = {}
+    optimize(graph, 
+             batch_size=1, 
+             cost_model=RandomCostModel(), 
+             opt_type=opt_type,
+             warmup=1,
+             number=1,
+             repeat=1,
+             max_num_groups=max_num_groups,
+             max_part_size=max_part_size,
+             max_group_size=max_group_size,
+             compute_weight=False,
+             debug_dp_info=debug_dp_info,
+             verbose=False
+    )
+    return debug_dp_info
 
 def optimize(graph: Graph,
              batch_size=1,
@@ -95,6 +115,13 @@ def optimize(graph: Graph,
     log(f"optimize {opt_type} on {graph.name}", verbose)
     assert 'parallel' in opt_type or 'merge' in opt_type
 
+    if verbose:
+        dp_info = graph_dp_summary(graph, opt_type, max_num_groups=1, max_part_size=max_part_size, max_group_size=1)
+        bar_state = tqdm(total=sum(dp_info['#states']), desc='Progress')
+    else:
+        dp_info = None
+        bar_state = None
+
     for bindex, block in enumerate(graph.blocks):
         all_nodes = block.inner_nodes + [block.exit_node]
         node_parts = block.parts
@@ -108,12 +135,12 @@ def optimize(graph: Graph,
                 begin = idx_part * max_part_size
                 end = min((idx_part + 1) * max_part_size, len(all_nodes))
                 node_parts.append([all_nodes[i] for i in range(begin, end)])
-        log(f"block {bindex} with {len(all_nodes)} nodes {len(node_parts)} parts", verbose)
+        # log(f"block {bindex} with {len(all_nodes)} nodes {len(node_parts)} parts", verbose)
 
         stage_list = []
 
         for part_index, npart in enumerate(node_parts):
-            log(f"part {part_index} with {len(npart)} nodes", verbose)
+            # log(f"part {part_index} with {len(npart)} nodes", verbose)
             ipart = [nid[nd] for nd in npart]
 
             dp: Dict[int, float] = {}
@@ -125,8 +152,9 @@ def optimize(graph: Graph,
 
             max_num_endings = functools.reduce(operator.mul, [len(chain) + 1 for chain in chains])
             if verbose:
-                print(f"#Chains: {len(chains)}")
-                print(f"Max number of endings: {max_num_endings}")
+                # print(f"#Chains: {len(chains)}")
+                # print(f"Max number of endings: {max_num_endings}")
+                pass
 
             if on_debug:
                 debug_dp_info['#states'].append(0)
@@ -138,7 +166,7 @@ def optimize(graph: Graph,
 
             ustate = sum(1 << i for i in ipart)
             dop(ustate, block, chains, on_debug, debug_dp_info, idn, nid, dp, ep, opt_type, max_group_size,
-                max_num_groups, merge_latency, parallel_latency, cost_model, batch_size, warmup, number, repeat)
+                max_num_groups, merge_latency, parallel_latency, cost_model, batch_size, warmup, number, repeat, bar_state)
             stage_list.extend(get_stage_list(ep, ustate))
 
             if on_debug:
@@ -157,6 +185,9 @@ def optimize(graph: Graph,
 
         new_block = construct(stage_list, block, blocks, graph_enter, idn, nid, compute_weight)
         blocks.append(new_block)
+
+    if verbose:
+        bar_state.close()
 
     new_graph = Graph(graph.name + "_" + opt_type, graph_enter, blocks)
     new_graph.infer_shape()
@@ -481,7 +512,7 @@ def ending_iterator(
 
 def dop(s: int,
         block, chains, on_debug, debug_dp_info, idn, nid, dp, ep, opt_type, max_group_size, max_num_groups,
-        merge_latency, parallel_latency, cost_model, batch_size, warmup, number, repeat) -> float:
+        merge_latency, parallel_latency, cost_model, batch_size, warmup, number, repeat, bar_state) -> float:
     """
     The main dynamic programming progress.
     """
@@ -510,7 +541,7 @@ def dop(s: int,
                 stage = [[u] for u in state2iset(ss)], 'merge'
                 val1 = dop(s - ss, block, chains, on_debug, debug_dp_info, idn, nid, dp, ep, opt_type, max_group_size,
                            max_num_groups, merge_latency, parallel_latency, cost_model, batch_size, warmup, number,
-                           repeat)
+                           repeat, bar_state)
                 val2 = latency(stage, block, merge_latency, parallel_latency, cost_model, idn, nid, batch_size, warmup,
                                number, repeat)
                 val = val1 + val2
@@ -529,7 +560,7 @@ def dop(s: int,
     #             consumed = sum(1 << u for u in itertools.chain(*stage[0]))
     #             val1 = dop(s - consumed, block, chains, on_debug, debug_dp_info, idn, nid, dp, ep, opt_type,
     #                        max_group_size, max_num_groups, merge_latency, parallel_latency, cost_model, batch_size,
-    #                        warmup, number, repeat)
+    #                        warmup, number, repeat, bar_state)
     #             val2 = latency(stage, block, merge_latency, parallel_latency, cost_model, idn, nid, batch_size,
     #                            warmup, number, repeat)
     #             val = val1 + val2
@@ -545,7 +576,7 @@ def dop(s: int,
             stage = groups, 'parallel'
             consumed = sum(1 << u for u in itertools.chain(*stage[0]))
             val1 = dop(s - consumed, block, chains, on_debug, debug_dp_info, idn, nid, dp, ep, opt_type, max_group_size,
-                       max_num_groups, merge_latency, parallel_latency, cost_model, batch_size, warmup, number, repeat)
+                       max_num_groups, merge_latency, parallel_latency, cost_model, batch_size, warmup, number, repeat, bar_state)
             val2 = latency(stage, block, merge_latency, parallel_latency, cost_model, idn, nid, batch_size, warmup,
                            number, repeat)
             val = val1 + val2
@@ -557,6 +588,8 @@ def dop(s: int,
                 dpv = val
                 ep[s] = stage
     dp[s] = dpv
+    if bar_state is not None:
+        bar_state.update(1)
     return dpv
 
 
