@@ -364,11 +364,11 @@ class Conv(Node):
 
     @property
     def input_shape(self):
-        return [sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:]]
+        return (sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:])
 
     @property
     def weight_shape(self):
-        return [self.out_channels, self.input_shape[0] // self.groups, *self.kernel]
+        return (self.out_channels, self.input_shape[0] // self.groups, *self.kernel)
 
     @property
     def bias_shape(self):
@@ -526,7 +526,7 @@ class Pool(Node):
 
     @property
     def input_shape(self):
-        return [sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:]]
+        return (sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:])
 
     def infer_shape(self):
         if self.pool_type == 'global_avg':
@@ -607,7 +607,7 @@ class Element(Node):
 
     @property
     def input_shape(self):
-        return [sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:]]
+        return (sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:])
 
     def infer_shape(self):
         self.output_shape = self.input_shape
@@ -661,7 +661,7 @@ class Identity(Node):
 
     @property
     def input_shape(self):
-        return [sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:]]
+        return (sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:])
 
     def infer_shape(self):
         self.output_shape = self.input_shape
@@ -729,7 +729,7 @@ class Activation(Node):
 
     @property
     def input_shape(self):
-        return [sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:]]
+        return (sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:])
 
     def infer_shape(self):
         self.output_shape = self.input_shape
@@ -779,7 +779,7 @@ class Relu(Node):
 
     @property
     def input_shape(self):
-        return [sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:]]
+        return (sum(term[0].length for term in self.inputs), *self.inputs[0][0].node.output_shape[1:])
 
     def infer_shape(self):
         self.output_shape = self.input_shape
