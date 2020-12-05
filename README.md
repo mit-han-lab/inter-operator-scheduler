@@ -34,7 +34,7 @@ IOS consistently outperforms state-of-the-art libraries (e.g., TensorRT) by 1.1 
 
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/frameworks_comparison.png" width=600>
+  <img src="./figures/frameworks_comparison.png" width=600>
   
   End-to-end performance comparison of different frameworks across different CNNs on batch size one. 
   The throughput is normalized to the best one for each model.
@@ -45,7 +45,7 @@ IOS consistently outperforms state-of-the-art libraries (e.g., TensorRT) by 1.1 
 IOS partitions given computation graph into multiple <em> stages </em>. Each stage has a <em>parallelization strategy</em>. 
 
 <div align="center">
-<img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/schedule_example.png" width=400>
+<img src="./figures/schedule_example.png" width=400>
 </div>
 As shown in the above figure, the computation graph in (1) is partitioned into two stages in (2). 
 The first stage contains operator a and b, and the second stage contains operator c, d, and e. 
@@ -163,7 +163,7 @@ Optimized schedule: 0.333 ms
 The following figure shows the sequential schedule and our schedule of the defined sample network. 
 
 <div align="center">
-<img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/sample.png" width=600>
+<img src="./figures/sample.png" width=600>
 </div>
 
 ## 4. Experiments
@@ -310,7 +310,7 @@ This experiment compare the following schedules: Sequential, Greedy, IOS-Merge, 
 For fair comparison, all schedules are executed in the same execution engine (IOS runtime).
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/schedules.png" width=600>
+  <img src="./figures/schedules.png" width=600>
   
   End-to-end performance comparison of different schedules across different CNNs on batch size one. 
   The throughput is normalized to the best one for each model.
@@ -360,7 +360,7 @@ This experiment compare IOS with other cuDNN-based frameworks/libraries: Tensorf
 TVM-cuDNN is the TVM framework, but convolution uses the cuDNN kernel (`target = 'cuda -libs=cudnn'`). 
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/frameworks_comparison.png" width=600>
+  <img src="./figures/frameworks_comparison.png" width=600>
   
   End-to-end performance comparison of different frame-works across different CNNs on batch size one. 
   The throughput is normalized to the best one for each model.
@@ -410,7 +410,7 @@ This experiment profiles the active warps of sample network defined in [Usage](#
 The NVIDIA CUDA Profiling Tools Interface ([CUPTI](https://developer.nvidia.com/cupti)) is used to profile. 
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/utilization.png" width=600>
+  <img src="./figures/utilization.png" width=600>
   
   The profiling of active warps for the sample network defined in `experiments/sample.py`. 
   <a href="https://docs.nvidia.com/gameworks/content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/issueefficiency.htm">Active warps</a> 
@@ -428,7 +428,7 @@ Above command would generate a plot image named `active_warps.png`, which can re
 Here is a sample of the figure:
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/active_warps.png" width=500>
+  <img src="./figures/active_warps.png" width=500>
 </div>
 
 
@@ -437,7 +437,7 @@ Here is a sample of the figure:
 IOS support specialized scheduling for different devices and different batch sizes. 
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/specialization.png" width=600>
+  <img src="./figures/specialization.png" width=600>
   
   Latency (ms) of specialized schedules for batch size 1, 32 and 128, and specialized schedules for NVIDIA Tesla K80 and V100. 
   The best performance is achieved when the schedule is specialized for each batch size and device. 
@@ -447,7 +447,7 @@ IOS support specialized scheduling for different devices and different batch siz
 </div>
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/specialization_example.png" width=600>
+  <img src="./figures/specialization_example.png" width=600>
   
   The schedule found by IOS for the last block of Inception V3. 
   Operator a-e are convolution operator while operator P is the pooling operator. 
@@ -510,7 +510,7 @@ To allow users to trade off the search time and optimized schedule latency, we i
 This experiment shows the trade-off between the search time and schedule latency.
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/reduce_optimization_cost.png" width=500>
+  <img src="./figures/reduce_optimization_cost.png" width=500>
   
   Trade-off between the optimized latency and the optimization cost for Inception V3 and NasNet.
 </div>
@@ -542,7 +542,7 @@ IOS can achieve consistent improvement for different batch sizes. In this experi
 Experiment result show that IOS consistently outperforms TensorRT in terms of throughput.
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/large_batchsize.png" width=600>
+  <img src="./figures/large_batchsize.png" width=600>
   
   The throughput comparison of Sequential schedule, TensorRT and IOS on batch size 1, 16, 32, 64 and 128 for Inception V3. 
 </div>
@@ -582,7 +582,7 @@ Please note that these schedule configs are optimized for NVIDIA Tesla V100 SXM2
 If you want to tune the network by yourself, just delete the `./schedules` directory and we would tune the network using TVM and store the tuned schedule configs in `./tvm_schedule_configs` automatically.
 
 <div align="center">
-  <img src="https://github.com/idy002/inter-operator-scheduler/blob/main/figures/autotvm.png" width=600>
+  <img src="./figures/autotvm.png" width=600>
   
   End-to-end performance comparison between TVM-AutoTune and IOS. 
   TVM-AutoTune and IOS are orthogonal because TVM focuses on the intra-operator parallelism while IOS focuses on inter-operator parallelism. 
