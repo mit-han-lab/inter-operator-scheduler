@@ -15,26 +15,18 @@ libname_list = [
 ]
 lib = None
 
-for libname in libname_list:
-    try:
-        lib = ctypes.cdll.LoadLibrary(os.path.join(cur_dir, libname))
-    except OSError as e:
-        pass
-    else:
-        # print(f"loaded {libname}")
-        break
-# if lib is None:
-#     for libname in libname_list:
-#         try:
-#             lib = ctypes.cdll.LoadLibrary(os.path.join(cur_dir, libname))
-#         except OSError as e:
-#             print(e)
-#     raise FileNotFoundError('TensorRT Backend library not found')
-
+def load_trt_library():
+    for libname in libname_list:
+        try:
+            return ctypes.cdll.LoadLibrary(os.path.join(cur_dir, libname))
+        except OSError as e:
+            pass
+    raise FileNotFoundError('TensorRT runtime library not found')
 
 def graph_latency(graph, batch_size=1, warmup=2, number=6, repeat=6):
+    global lib
     if lib is None:
-        raise FileNotFoundError('TensorRT runtime library not found')
+        lib = load_trt_library()
     results_t = ctypes.c_float * int(repeat)
     results = results_t()
 
@@ -49,8 +41,9 @@ def graph_latency(graph, batch_size=1, warmup=2, number=6, repeat=6):
 
 
 def graph_inference(graph: Graph, batch_size, input: np.ndarray):
+    global lib
     if lib is None:
-        raise FileNotFoundError('TensorRT runtime library not found')
+        lib = load_trt_library()
     output = np.empty(shape=(batch_size, *graph.blocks[-1].exit_node.output_shape), dtype=np.float32)
 
     conv_nodes: List[Conv] = list(get_nodes_by_type(graph.nodes(), Conv))

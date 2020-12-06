@@ -15,26 +15,18 @@ libname_list = [
 ]
 lib = None
 
-for libname in libname_list:
-    try:
-        lib = ctypes.cdll.LoadLibrary(os.path.join(cur_dir, libname))
-    except OSError as e:
-        pass
-    else:
-        # print(f"loaded {libname}")
-        break
-# if lib is None:
-#     for libname in libname_list:
-#         try:
-#             lib = ctypes.cdll.LoadLibrary(os.path.join(cur_dir, libname))
-#         except OSError as e:
-#             print(e)
-#     raise FileNotFoundError('IOS Backend library not found')
-
+def load_ios_library():
+    for libname in libname_list:
+        try:
+            return ctypes.cdll.LoadLibrary(os.path.join(cur_dir, libname))
+        except OSError as e:
+            pass
+    raise FileNotFoundError('IOS Backend library not found')
 
 def graph_latency(graph: Graph, batch_size=1, warmup=2, number=6, repeat=6, profile_stage=False):
+    global lib
     if lib is None:
-        raise FileNotFoundError('IOS Backend library not found')
+        lib = load_ios_library()
     num_stages = sum(len(b.stages) for b in graph.blocks)
     results_t = ctypes.c_float * int(repeat)
     results = results_t()
@@ -59,8 +51,9 @@ def graph_latency(graph: Graph, batch_size=1, warmup=2, number=6, repeat=6, prof
 
 
 def block_latency(block: Block, batch_size, warmup, number, repeat, profile_stage=False):
+    global lib
     if lib is None:
-        raise FileNotFoundError('IOS Backend library not found')
+        lib = load_ios_library()
     num_stages = len(block.stages)
     results_t = ctypes.c_float * int(repeat)
     results = results_t()
@@ -85,6 +78,9 @@ def block_latency(block: Block, batch_size, warmup, number, repeat, profile_stag
 
 
 def stage_latency(stage: List[List[Node]], batch_size, warmup, number, repeat, profile_stage=False):
+    global lib
+    if lib is None:
+        lib = load_ios_library()
     stage_seqs = []
     input_nodes = []
     for seq in stage:
@@ -116,6 +112,9 @@ def stage_latency(stage: List[List[Node]], batch_size, warmup, number, repeat, p
 
 
 def graph_inference(graph: Graph, batch_size, input: np.ndarray):
+    global lib
+    if lib is None:
+        lib = load_ios_library()
     output = np.empty(shape=(batch_size, *graph.blocks[-1].exit_node.output_shape), dtype=np.float32)
 
     conv_nodes: List[Conv] = list(get_nodes_by_type(graph.nodes(), Conv))
