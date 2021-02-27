@@ -86,4 +86,17 @@ def randwire_large():
     graph.init_weights()
     return graph
 
+def randwire_xlarge():
+    reset_name()
+    ch = 154
+    graph_fnames = [os.path.join(graph_dir, fname) for fname in ['ws-320-20-0.75-x.txt']]
+
+    pv = placeholder(output_shape=(3, 224, 224))
+    v, block1 = randwire_regular_front(pv, ch)
+    v, block2 = randwire_stage(v, ch, graph_fnames[0])
+    v, block3 = randwire_tail(v)
+
+    graph = Graph("randwire_xlarge", pv.node, [block1, block2, block3])
+    graph.init_weights()
+    return graph
 
