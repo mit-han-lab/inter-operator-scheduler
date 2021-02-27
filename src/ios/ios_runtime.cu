@@ -44,8 +44,8 @@ cudnnMathType_t cudnn_math_type = CUDNN_DEFAULT_MATH;
 
 #define CONTEXT_WORKSPACE_SIZE 128 * 1024 * 1024 // 256 MB
 #define MAX_NUM_GROUPS 10
-#define MAX_NUM_VALUES 10
-#define MAX_NUM_TERMS 10
+#define MAX_NUM_VALUES 25
+#define MAX_NUM_TERMS 25
 #define MAX_NUM_NODES 1000
 #define MAX_GROUP_SIZE 40
 
@@ -1375,9 +1375,8 @@ struct Graph {
         map();
 
 
-        bool profile = (warmup == 10000); // magic number to enable profiling
+        bool profile = (warmup >= 10000); // magic number to enable profiling
         if(profile) {
-            warmup = 2;
             volatile int test_complete;
             volatile int test_start;
             test_complete = 0;
@@ -1386,7 +1385,15 @@ struct Graph {
             testStart = &test_start;
             int status;
             pthread_t pThread;
-            eventName = "active_warps_pm";
+            const char *eventNames[] = {
+                "active_warps_pm",
+                "l2_subp0_read_sector_misses",
+                "l2_subp0_total_read_sector_queries",
+                "l2_subp1_read_sector_misses",
+                "l2_subp1_total_read_sector_queries"
+            };
+            assert(warmup-10000 < sizeof(eventNames)/sizeof(const char*));
+            eventName = eventNames[warmup-10000];
 
             status = pthread_create(&pThread, NULL, sampling_func, NULL);
             if (status != 0) {
@@ -1399,6 +1406,7 @@ struct Graph {
             while(T--)
                 forward(false, events);
             test_complete = 1;
+            warmup = 2;
         }
 
 
