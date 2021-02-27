@@ -1,7 +1,15 @@
 cmake_minimum_required(VERSION 3.10)
 project(ios LANGUAGES C CXX CUDA)
 
-include(config.cmake)
+# include(config.cmake)
+if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/config.cmake)
+  include(${CMAKE_CURRENT_BINARY_DIR}/config.cmake)
+else()
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/config.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/config.cmake)
+  endif()
+endif()
+
 file(GLOB_RECURSE IOS_SRCS src/ios/* src/utils/*)
 file(GLOB_RECURSE TRT_SRCS src/trt/* src/utils/*)
 
