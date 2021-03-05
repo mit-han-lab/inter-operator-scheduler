@@ -1406,6 +1406,7 @@ struct Graph {
             while(T--)
                 forward(false, events);
             test_complete = 1;
+            pthread_join(pThread, NULL);
             warmup = 2;
         }
 

@@ -21,16 +21,24 @@ def model_a(ch, r) -> Graph:
 expr_dir = f'./outputs'
 os.makedirs(expr_dir, exist_ok=True)
 
-batch_size = 1
-warmup = 10000  # magic number to enable profiling
-number = 1500
-repeat = 1
+event2index = {
+    "active_warps_pm": 0,
+    "l2_subp0_read_sector_misses": 1,
+    "l2_subp0_total_read_sector_queries": 2,
+    "l2_subp1_read_sector_misses": 3,
+    "l2_subp1_total_read_sector_queries": 4
+}
 
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--ename', type=str, required=True)
+argparser.add_argument('--event', type=int, choices=list(event2index.values()), default=event2index['active_warps_pm'])
 args = argparser.parse_args()
 
+batch_size = 1
+warmup = 10000 + args.event  # magic number to enable profiling. warmup = 10000 + event_index
+number = 1500
+repeat = 1
 
 def main(channels, resolutions):
     cost_model = IOSCostModel()

@@ -127,7 +127,7 @@ void * sampling_func(void *arg)
     std::cout << "Event Name: " << eventName << std::endl;
     std::cout << "#Stamps: " << vc.size() << std::endl;
     std::cout << "Duration: " << duration << " ns" << std::endl;
-    std::cout << "Average duration between two stamps: " << duration / (vc.size() - 1) << std::endl;
+    std::cout << "Average duration between two stamps: " << duration / (vc.size()) << std::endl;
 
 	for(int i = 0; i < vc.size(); i++)
 		printf("%llu %llu\n", vc[i], tvc[i]);

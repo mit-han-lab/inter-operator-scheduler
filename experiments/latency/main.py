@@ -4,7 +4,6 @@ import argparse
 import numpy as np
 import os
 import logging
-from ios.optimizer import optimize
 from ios.models import inception_v3, randwire_large, nasnet_large, squeezenet
 from ios.visualizer import draw, draw_block
 
@@ -68,7 +67,7 @@ def summary_str(opt_cost, mean_latency):
     items_dict = {
         'Model': min_width(args.model, 12),
         'Optimization': opt_name,
-        'Batchsize': f'{args.bs:<2}',
+        'Batchsize': f'{args.bs:<3}',
         'Optimization cost': min_width(f'{opt_cost:.0f} sec', 8),
         'Latency': min_width(f'{mean_latency:.2f} ms', 10)
     }
@@ -102,13 +101,11 @@ def main():
     elif args.opt_type in ['taso_seq', 'taso']:
         import ios.taso_utils
         opt_type = args.opt_type
-        if opt_type == 'taso':
-            if args.model in ['nasnet', 'squeezenet']:
-                opt_type = 'taso_seq'  # there is error when optimize nasnet and squeezenet in TASO, hack it here
-        print(args)
-        print(opt_type)
         t1 = time.time()
-        graph_latency = ios.taso_utils.graph_latency(graph, batchsize=args.bs, warmup=args.warmup, number=args.number, repeat=args.repeat, optimize=(opt_type == 'taso'))
+        budget = 1000
+        if args.model == 'nasnet':
+            budget = 8  # the budget of nasnet is set to 8 to avoid out of memory.
+        graph_latency = ios.taso_utils.graph_latency(graph, batchsize=args.bs, warmup=args.warmup, number=args.number, repeat=args.repeat, optimize=(opt_type == 'taso'), budget=budget)
         t2 = time.time()
         name = f'{graph.name}_{args.opt_type}'
         logs[name] = {}
@@ -133,6 +130,7 @@ def main():
         summary = summary_str(opt_cost=t2 - t1, mean_latency=np.mean(graph_latency))
     else:
         from ios.cost_model import IOSCostModel
+        from ios.optimizer import optimize
         cost_model = IOSCostModel()
         t1 = time.time()
         if args.opt_type == 'sequential':
