@@ -483,6 +483,7 @@ def ending_iterator(
     tc = graph_transitive_closure(build_graph(state2nset(s, idn), nid), include_self=True)
 
     # enuermate ending
+    visited_stage: set = set()
     for w in range(total):
         end_list = []
         for i, chain in enumerate(chains):
@@ -495,19 +496,30 @@ def ending_iterator(
             continue
         if len(end_list) > max_num_groups:
             continue
-        isdisjoint = True
+
+        groups: List[set] = []
+        exceed_group_size = False
         for i in range(len(end_list)):
-            for j in range(i + 1, len(end_list)):
-                if not tc[end_list[i]].isdisjoint(tc[end_list[j]]):
+            isdisjoint = True
+            for group in groups:
+                if not group.isdisjoint(tc[end_list[i]]):
                     isdisjoint = False
+                    group.update(tc[end_list[i]])
+                    if len(group) > max_group_size:
+                        exceed_group_size = True
                     break
-            if not isdisjoint:
+            if exceed_group_size:
                 break
-        if isdisjoint:
-            groups = [sorted(tc[u]) for u in end_list]
-            if any(len(group) > max_group_size for group in groups):
-                continue
-            yield groups
+            if isdisjoint:
+                groups.append(tc[end_list[i]].copy())
+        if exceed_group_size:
+            continue
+
+        ret_groups = tuple(tuple(sorted(list(group))) for group in groups)
+        if ret_groups in visited_stage:
+            continue
+        visited_stage.add(ret_groups)
+        yield ret_groups
 
 
 def dop(s: int,
